@@ -243,15 +243,17 @@ str_to_int_loop:
 
         ; Compare loop has three functions:
         ; 1. Build a string from SysTime stuct for printing (wHour:wMinute).
+        ;    Count characters while building string in non-volatile register R12D to survive calls.
         ; 2. Combine wMinute and wHour into a 4 digit integer time format (HHMM).
         ; 3. Compare alarm set time to the system local time, jump to alarm when they match.
 compare_loop:
         lea     rdi, str_local              ; Pointer to buffer to build local time string
+        xor     r12d, r12d                  ; Counter for characters written to local time string
         lea     rcx, SysTime
         call    GetLocalTime
 
         ; Store hours in buffer.
-        xor     edx, edx
+        xor     edx, edx                    ; Clear for div remainder
         movzx   eax, SysTime.wHour
         mov     ecx, 10
         div     ecx
@@ -259,13 +261,16 @@ compare_loop:
         add     dl, '0'                     ; DL = second hour digit
         mov     [rdi], al
         inc     rdi
+        inc     r12d
         mov     [rdi], dl
         inc     rdi
+        inc     r12d
 
         ; Store ':' in buffer.
         mov     al, ':'
         mov     [rdi], al
         inc     rdi
+        inc     r12d
 
         ; Store minutes in buffer.
         xor     edx, edx
@@ -276,7 +281,9 @@ compare_loop:
         add     dl, '0'                     ; DL = second minunte digit
         mov     [rdi], al
         inc     rdi
+        inc     r12d
         mov     [rdi], dl
+        inc     r12d
 
         ; Print local time label and local time string.
         ; 'lbl_local' begins with CR to overwrite the current line on each update.
@@ -288,7 +295,7 @@ compare_loop:
 
         mov     rcx, [stdout]
         lea     rdx, str_local
-        mov     r8, LENGTHOF str_local
+        mov     r8d, r12d
         lea     r9, nbwr
         call    WriteConsoleA
 
