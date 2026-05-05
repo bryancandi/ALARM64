@@ -1,0 +1,24 @@
+# Ignore everything
+*
+
+# But don't ignore folders
+!*/
+
+# But do ignore these folders
+# node_modules/
+# vendor/
+
+# But don't ignore these files
+# !/.devcontainer.json
+!/.vscode/settings.json
+
+# But don't ignore these types of files
+!*.asm
+!*.bat
+!*.md
+!*.s
+!*.txt
+!Makefile
+
+# Don't ignore gitignore file itself
+!.gitignore
