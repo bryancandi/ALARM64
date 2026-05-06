@@ -10,19 +10,19 @@
 
 INCLUDELIB kernel32.lib
 
-ExitProcess         PROTO
-GetStdHandle        PROTO
-ReadFile            PROTO
-WriteConsoleA       PROTO
-GetLocalTime        PROTO :PTR SYSTEMTIME
-Beep                PROTO :DWORD, :DWORD
-Sleep               PROTO :DWORD
+ExitProcess         PROTO uExitCode:DWORD
+GetStdHandle        PROTO nStdHandle:DWORD
+ReadFile            PROTO hFile:QWORD, lpBuffer:PTR, nNumberOfBytesToRead:DWORD, lpNumberOfBytesRead:PTR, lpOverlapped:PTR
+WriteConsoleA       PROTO hConsoleHandle:QWORD, lpBuffer:PTR, nNumberOfCharsToWrite:DWORD, lpNumberOfCharsWritten:PTR, lpReserved:PTR
+GetLocalTime        PROTO lpSystemTime:PTR SYSTEMTIME
+Beep                PROTO dwFreq:DWORD, dwDuration:DWORD
+Sleep               PROTO dwMilliseconds:DWORD
 
 STD_INPUT_HANDLE    EQU -10
 STD_OUTPUT_HANDLE   EQU -11
 MaxSize             EQU 64
 
-; SYSTEMTIME structure
+; SYSTEMTIME structure populated by GetLocalTime
 SYSTEMTIME STRUCT
     wYear           WORD ?
     wMonth          WORD ?
@@ -35,7 +35,7 @@ SYSTEMTIME STRUCT
 SYSTEMTIME ENDS
 
         .DATA
-SysTime     SYSTEMTIME <>
+SysTime     SYSTEMTIME <>                   ; Instance of SYSTEMTIME with default initialization
 header      BYTE    "ALARM64 v1.0", 0Dh, 0Ah
 prompt      BYTE    0Dh, 0Ah, "Enter alarm target time (HH:MM): "
 error       BYTE    0Dh, 0Ah, "Invalid time format. Use 24h HH:MM.", 0Dh, 0Ah
@@ -61,21 +61,22 @@ alarm_time  DWORD   ?
 
         .CODE
 main    PROC
-        sub     rsp, 40
+        sub     rsp, 40                     ; Reserve shadow space on stack (32 bytes + 8 to align)
 
-        mov     rcx, STD_INPUT_HANDLE
+        mov     rcx, STD_INPUT_HANDLE       ; nStdHandle
         call    GetStdHandle
-        mov     [stdin], rax
+        mov     [stdin], rax                ; Store handle for use with ReadFile
 
-        mov     rcx, STD_OUTPUT_HANDLE
+        mov     rcx, STD_OUTPUT_HANDLE      ; nStdHandle
         call    GetStdHandle
-        mov     [stdout], rax
+        mov     [stdout], rax               ; Store handle for use with WriteConsoleA
 
         ; Display header.
-        mov     rcx, [stdout]
-        lea     rdx, header
-        mov     r8, LENGTHOF header
-        lea     r9, nbwr
+        mov     rcx, [stdout]               ; Arg 1 = handle (value)
+        lea     rdx, header                 ; Arg 2 = lpBuffer (pointer)
+        mov     r8, LENGTHOF header         ; Arg 3 = nNumberOfCharsToWrite (value)
+        lea     r9, nbwr                    ; Arg 4 = lpNumberOfCharsWritten (pointer)
+        mov     QWORD PTR [rsp+32], 0       ; Arg 5 = lpReserved (NULL pointer on stack)
         call    WriteConsoleA
 
         ; Prompt and read input.
@@ -84,12 +85,14 @@ time_prompt:
         lea     rdx, prompt
         mov     r8, LENGTHOF prompt
         lea     r9, nbwr
+        mov     QWORD PTR [rsp+32], 0
         call    WriteConsoleA
 
-        mov     rcx, [stdin]
-        lea     rdx, buffer
-        mov     r8, MaxSize
-        lea     r9, nbrd
+        mov     rcx, [stdin]                ; Arg 1 = handle (value)
+        lea     rdx, buffer                 ; Arg 2 = lpBuffer (pointer)
+        mov     r8, MaxSize                 ; Arg 3 = nNumberOfBytesToRead (value)
+        lea     r9, nbrd                    ; Arg 4 = lpNumberOfBytesRead (pointer)
+        mov     QWORD PTR [rsp+32], 0       ; Arg 5 = lpOverlapped (NULL pointer on stack)
         call    ReadFile
 
         ; Validate user input; acceptable format = HH:MM.
@@ -198,13 +201,14 @@ time_invalid:
         lea     rdx, error
         mov     r8d, LENGTHOF error
         lea     r9, nbwr
+        mov     QWORD PTR [rsp+32], 0
         call    WriteConsoleA
         jmp     time_prompt
 time_valid:
 
         ; Convert user input to an integer for comparison.
-        mov     ebx, [num_digits]           ; Number of characters in the string
-        xor     r8, r8                      ; Initial buffer position index = 0
+        mov     ebx, [num_digits]           ; EBX = number of characters in the string
+        xor     r8, r8                      ; R8 = buffer position index (0)
         xor     rax, rax
         lea     rcx, fmtbuf                 ; RCX = pointer to formatted buffer
 str_to_int_loop:
@@ -223,22 +227,25 @@ str_to_int_loop:
         lea     rdx, quit
         mov     r8, LENGTHOF quit
         lea     r9, nbwr
+        mov     QWORD PTR [rsp+32], 0
         call    WriteConsoleA
 
         mov     rcx, [stdout]
         lea     rdx, lbl_alarm
         mov     r8, LENGTHOF lbl_alarm
         lea     r9, nbwr
+        mov     QWORD PTR [rsp+32], 0
         call    WriteConsoleA
 
-        mov     r10d, [nbrd]                ; Number of characters written to buffer
-        mov     eax, [num_wspace]           ; Number of white spaces to skip in the buffer
+        mov     r10d, [nbrd]                ; R10D = number of characters written to buffer
+        mov     eax, [num_wspace]           ; EAX = number of white spaces to skip in the buffer
         sub     r10d, eax                   ; Subtract white space character count from buffer length
         mov     rcx, [stdout]
         lea     rdx, buffer
         add     rdx, rax                    ; Advance to buffer past white spaces
         mov     r8d, r10d
         lea     r9, nbwr
+        mov     QWORD PTR [rsp+32], 0
         call    WriteConsoleA
 
         ; Compare loop has three functions:
@@ -247,13 +254,13 @@ str_to_int_loop:
         ; 2. Combine wMinute and wHour into a 4 digit integer time format (HHMM).
         ; 3. Compare alarm set time to the system local time, jump to alarm when they match.
 compare_loop:
-        lea     rdi, str_local              ; Pointer to buffer to build local time string
-        xor     r12d, r12d                  ; Counter for characters written to local time string
-        lea     rcx, SysTime
-        call    GetLocalTime
+        lea     rdi, str_local              ; RDI = pointer to buffer to build local time string
+        xor     r12d, r12d                  ; R12D = counter for characters written to local time string
+        lea     rcx, SysTime                ; Arg 1 = pointer to the structure
+        call    GetLocalTime                ; Fill the struct with the current time
 
         ; Store hours in buffer.
-        xor     edx, edx                    ; Clear for div remainder
+        xor     edx, edx                    ; EDX = division remainder (clear)
         movzx   eax, SysTime.wHour
         mov     ecx, 10
         div     ecx
@@ -278,7 +285,7 @@ compare_loop:
         mov     ecx, 10
         div     ecx
         add     al, '0'                     ; AL = first minute digit
-        add     dl, '0'                     ; DL = second minunte digit
+        add     dl, '0'                     ; DL = second minute digit
         mov     [rdi], al
         inc     rdi
         inc     r12d
@@ -291,12 +298,14 @@ compare_loop:
         lea     rdx, lbl_local
         mov     r8, LENGTHOF lbl_local
         lea     r9, nbwr
+        mov     QWORD PTR [rsp+32], 0
         call    WriteConsoleA
 
         mov     rcx, [stdout]
         lea     rdx, str_local
         mov     r8d, r12d
         lea     r9, nbwr
+        mov     QWORD PTR [rsp+32], 0
         call    WriteConsoleA
 
         ; Compare current time to alarm set time.
@@ -309,8 +318,8 @@ compare_loop:
         mov     edx, [alarm_time]
         cmp     eax, edx                    ; Have we reached the alarm set time?
         je      alarm                       ; Yes, sound the alarm
-        mov     ecx, 10000                  ; No, sleep 10 seconds and check again
-        call    Sleep
+        mov     ecx, 10000                  ; dwMilliseconds (ms)
+        call    Sleep                       ; No, sleep, then check again
         jmp     compare_loop
 
         ; Sound the alarm!
@@ -319,18 +328,20 @@ alarm:
         lea     rdx, dblsp
         mov     r8, LENGTHOF dblsp
         lea     r9, nbwr
+        mov     QWORD PTR [rsp+32], 0
         call    WriteConsoleA
 
-        mov     ebx, 400                    ; Number of alarm cycles (400 = 10 minutes)
+        mov     ebx, 400                    ; EBX = number of alarm cycles (400 = 10 minutes)
 beep_loop:
-        mov     ecx, 700                    ; Beep frequency (Hz)
-        mov     edx, 1000                   ; Beep duration (ms)
+        mov     ecx, 700                    ; dwFreq (Hz)
+        mov     edx, 1000                   ; dwDuration (ms)
         call    Beep
 
         mov     rcx, [stdout]
         lea     rdx, blank
         mov     r8, LENGTHOF blank
         lea     r9, nbwr
+        mov     QWORD PTR [rsp+32], 0
         call    WriteConsoleA               ; Write blank message
 
         mov     ecx, 500                    ; Sleep 500 ms
@@ -339,7 +350,8 @@ beep_loop:
         lea     rdx, wake
         mov     r8, LENGTHOF wake
         lea     r9, nbwr
-        call    WriteConsoleA               ; Write alarm message
+        mov     QWORD PTR [rsp+32], 0
+        call    WriteConsoleA               ; Write 'Alarm!' message
 
         dec     ebx                         ; Decrement cycles
         test    ebx, ebx
@@ -351,9 +363,10 @@ exit:
         lea     rdx, done
         mov     r8, LENGTHOF done
         lea     r9, nbwr
+        mov     QWORD PTR [rsp+32], 0
         call    WriteConsoleA
 
-        xor     rcx, rcx
+        xor     rcx, rcx                    ; uExitCode
         call    ExitProcess
 main    ENDP
         END
