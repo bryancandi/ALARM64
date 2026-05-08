@@ -60,7 +60,7 @@ num_digits  DWORD   ?
 alarm_time  DWORD   ?
 
         .CODE
-main    PROC
+main    PROC    USES rbx rsi rdi r12
         sub     rsp, 40                     ; Reserve shadow space on stack (32 bytes + 8 to align)
 
         mov     rcx, STD_INPUT_HANDLE       ; nStdHandle
@@ -366,7 +366,7 @@ exit:
         mov     QWORD PTR [rsp+32], 0
         call    WriteConsoleA
 
-        xor     rcx, rcx                    ; uExitCode
+        xor     ecx, ecx                    ; uExitCode
         call    ExitProcess
 main    ENDP
         END
