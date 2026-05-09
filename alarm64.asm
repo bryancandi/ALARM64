@@ -9,6 +9,7 @@
 ;==============================================================================
 
 INCLUDELIB kernel32.lib                     ; Link the Windows kernel library for system functions
+INCLUDELIB user32.lib                       ; Link the Windows user interface library
 
 ; Win32 function prototypes with arguments.
 ; x64 args in: RCX, RDX, R8, R9, stack
@@ -17,12 +18,14 @@ GetStdHandle        PROTO nStdHandle:DWORD
 ReadFile            PROTO hFile:QWORD, lpBuffer:PTR, nNumberOfBytesToRead:DWORD, lpNumberOfBytesRead:PTR, lpOverlapped:PTR
 WriteFile           PROTO hFile:QWORD, lpBuffer:PTR, nNumberOfBytesToWrite:DWORD, lpNumberOfBytesWritten:PTR, lpOverlapped:PTR
 GetLocalTime        PROTO lpSystemTime:PTR SYSTEMTIME
+GetAsyncKeyState    PROTO vKey:DWORD
 Beep                PROTO dwFreq:DWORD, dwDuration:DWORD
 Sleep               PROTO dwMilliseconds:DWORD
 
 STD_INPUT_HANDLE    EQU -10
 STD_OUTPUT_HANDLE   EQU -11
 MaxSize             EQU 64
+VK_ESCAPE           EQU 1Bh                 ; Escape key code for GetAsyncKeyState
 
 ; SYSTEMTIME structure populated by GetLocalTime.
 SYSTEMTIME STRUCT
@@ -41,12 +44,13 @@ SysTime     SYSTEMTIME <>                   ; Instance of SYSTEMTIME with defaul
 header      BYTE    "ALARM64 v1.0", 0Dh, 0Ah
 prompt      BYTE    0Dh, 0Ah, "Enter alarm target time (HH:MM): "
 error       BYTE    0Dh, 0Ah, "Invalid time format. Use 24h HH:MM.", 0Dh, 0Ah
-quit        BYTE    0Dh, 0Ah, "Press Ctrl-C to terminate.", 0Dh, 0Ah
+quit        BYTE    0Dh, 0Ah, "Press Escape key to terminate alarm.", 0Dh, 0Ah
 lbl_alarm   BYTE    0Dh, 0Ah, "Alarm set time: "
 lbl_local   BYTE    0Dh, "Current time:   "
 wake        BYTE    0Dh, "Alarm!"
 blank       BYTE    0Dh, "      "
 done        BYTE    0Dh, "Alarm completed.", 0Dh, 0Ah
+esc_done    BYTE    0Dh, 0Ah, "Alarm terminated.", 0Dh, 0Ah  
 cr          BYTE    0Dh
 crlf        BYTE    0Dh, 0Ah
 dblsp       BYTE    0Dh, 0Ah, 0Ah
@@ -250,16 +254,24 @@ str_to_int_loop:
         mov     QWORD PTR [rsp+32], 0
         call    WriteFile
 
-        ; Compare loop has three functions:
-        ; 1. Build a string from SysTime stuct for printing (wHour:wMinute).
+        ; Compare loop has four functions:
+        ; 1. Check if ESCAPE key has been pressed; exit if yes.
+        ; 2. Build a string from SysTime stuct for printing (wHour:wMinute).
         ;    Count characters while building string in non-volatile register R12D to survive calls.
-        ; 2. Combine wMinute and wHour into a 4 digit integer time format (HHMM).
-        ; 3. Compare alarm set time to the system local time, jump to alarm when they match.
+        ; 3. Combine wMinute and wHour into a 4 digit integer time format (HHMM).
+        ; 4. Compare alarm set time to the system local time, jump to alarm when they match.
 compare_loop:
+        mov     ecx, VK_ESCAPE              ; Arg 1 = virtual key code to listen for (ESCAPE)
+        call    GetAsyncKeyState            ; Check if ESC key has been pressed since the last loop
+        ; Test AX register LSB and MSB, thish way we catch both possible scenarios (8000h OR 1)
+        ; LSB = key pressed since last query, MSB = key currently down
+        test    ax, 8001h                   ; Text AX. Non-zero if either LSB or MSB is set.
+        jnz     exit_esc
+    
         lea     rdi, str_local              ; RDI = pointer to buffer to build local time string
         xor     r12d, r12d                  ; R12D = counter for characters written to local time string
         lea     rcx, SysTime                ; Arg 1 = pointer to the structure
-        call    GetLocalTime                ; Fill the struct with the current time
+        call    GetLocalTime                ; Call to populate the struct with current time data
 
         ; Store hours in buffer.
         xor     edx, edx                    ; EDX = division remainder (clear)
@@ -333,6 +345,11 @@ alarm:
 
         mov     ebx, 400                    ; EBX = number of alarm cycles (400 = 10 minutes)
 beep_loop:
+        mov     ecx, VK_ESCAPE
+        call    GetAsyncKeyState            ; Check if ESC key has been pressed since the last loop
+        test    ax, 8001h                   ; LSB = key pressed since last query, MSB = key currently down
+        jnz     exit_esc
+
         mov     ecx, 700                    ; dwFreq (Hz)
         mov     edx, 1000                   ; dwDuration (ms)
         call    Beep
@@ -355,17 +372,25 @@ beep_loop:
 
         dec     ebx                         ; Decrement cycles
         test    ebx, ebx
-        jz      exit
+        jz      exit_done
         jmp     beep_loop
 
-exit:
+exit_esc:
+        mov     rcx, [stdout]
+        lea     rdx, esc_done
+        mov     r8, SIZEOF esc_done
+        lea     r9, nbwr
+        mov     QWORD PTR [rsp+32], 0
+        call    WriteFile
+        jmp     exit
+exit_done:
         mov     rcx, [stdout]
         lea     rdx, done
         mov     r8, SIZEOF done
         lea     r9, nbwr
         mov     QWORD PTR [rsp+32], 0
         call    WriteFile
-
+exit:
         xor     ecx, ecx                    ; uExitCode
         call    ExitProcess
 Start   ENDP
