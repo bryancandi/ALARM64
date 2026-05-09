@@ -8,12 +8,14 @@
 ; Licensed under the Apache License, Version 2.0
 ;==============================================================================
 
-INCLUDELIB kernel32.lib
+INCLUDELIB kernel32.lib                     ; Link the Windows kernel library for system functions
 
+; Win32 function prototypes with arguments.
+; x64 args in: RCX, RDX, R8, R9, stack
 ExitProcess         PROTO uExitCode:DWORD
 GetStdHandle        PROTO nStdHandle:DWORD
 ReadFile            PROTO hFile:QWORD, lpBuffer:PTR, nNumberOfBytesToRead:DWORD, lpNumberOfBytesRead:PTR, lpOverlapped:PTR
-WriteConsoleA       PROTO hConsoleHandle:QWORD, lpBuffer:PTR, nNumberOfCharsToWrite:DWORD, lpNumberOfCharsWritten:PTR, lpReserved:PTR
+WriteFile           PROTO hFile:QWORD, lpBuffer:PTR, nNumberOfBytesToWrite:DWORD, lpNumberOfBytesWritten:PTR, lpOverlapped:PTR
 GetLocalTime        PROTO lpSystemTime:PTR SYSTEMTIME
 Beep                PROTO dwFreq:DWORD, dwDuration:DWORD
 Sleep               PROTO dwMilliseconds:DWORD
@@ -22,7 +24,7 @@ STD_INPUT_HANDLE    EQU -10
 STD_OUTPUT_HANDLE   EQU -11
 MaxSize             EQU 64
 
-; SYSTEMTIME structure populated by GetLocalTime
+; SYSTEMTIME structure populated by GetLocalTime.
 SYSTEMTIME STRUCT
     wYear           WORD ?
     wMonth          WORD ?
@@ -69,26 +71,26 @@ Start   PROC    USES rbx rsi rdi r12
 
         mov     rcx, STD_OUTPUT_HANDLE      ; nStdHandle
         call    GetStdHandle
-        mov     [stdout], rax               ; Store handle for use with WriteConsoleA
+        mov     [stdout], rax               ; Store handle for use with WriteFile
 
         ; Display header.
-        mov     rcx, [stdout]               ; Arg 1 = handle (value)
+        mov     rcx, [stdout]               ; Arg 1 = hFile (value)
         lea     rdx, header                 ; Arg 2 = lpBuffer (pointer)
-        mov     r8, LENGTHOF header         ; Arg 3 = nNumberOfCharsToWrite (value)
-        lea     r9, nbwr                    ; Arg 4 = lpNumberOfCharsWritten (pointer)
-        mov     QWORD PTR [rsp+32], 0       ; Arg 5 = lpReserved (NULL pointer on stack)
-        call    WriteConsoleA
+        mov     r8, SIZEOF header           ; Arg 3 = nNumberOfBytesToWrite (value)
+        lea     r9, nbwr                    ; Arg 4 = lpNumberOfBytesWritten (pointer)
+        mov     QWORD PTR [rsp+32], 0       ; Arg 5 = lpOverlapped (NULL pointer on stack)
+        call    WriteFile
 
         ; Prompt and read input.
 time_prompt:
         mov     rcx, [stdout]
         lea     rdx, prompt
-        mov     r8, LENGTHOF prompt
+        mov     r8, SIZEOF prompt
         lea     r9, nbwr
         mov     QWORD PTR [rsp+32], 0
-        call    WriteConsoleA
+        call    WriteFile
 
-        mov     rcx, [stdin]                ; Arg 1 = handle (value)
+        mov     rcx, [stdin]                ; Arg 1 = hFile (value)
         lea     rdx, buffer                 ; Arg 2 = lpBuffer (pointer)
         mov     r8, MaxSize                 ; Arg 3 = nNumberOfBytesToRead (value)
         lea     r9, nbrd                    ; Arg 4 = lpNumberOfBytesRead (pointer)
@@ -199,10 +201,10 @@ consume_separator:
 time_invalid:
         mov     rcx, [stdout]
         lea     rdx, error
-        mov     r8d, LENGTHOF error
+        mov     r8d, SIZEOF error
         lea     r9, nbwr
         mov     QWORD PTR [rsp+32], 0
-        call    WriteConsoleA
+        call    WriteFile
         jmp     time_prompt
 time_valid:
 
@@ -225,28 +227,28 @@ str_to_int_loop:
         ; Alarm is set; print set time.
         mov     rcx, [stdout]
         lea     rdx, quit
-        mov     r8, LENGTHOF quit
+        mov     r8, SIZEOF quit
         lea     r9, nbwr
         mov     QWORD PTR [rsp+32], 0
-        call    WriteConsoleA
+        call    WriteFile
 
         mov     rcx, [stdout]
         lea     rdx, lbl_alarm
-        mov     r8, LENGTHOF lbl_alarm
+        mov     r8, SIZEOF lbl_alarm
         lea     r9, nbwr
         mov     QWORD PTR [rsp+32], 0
-        call    WriteConsoleA
+        call    WriteFile
 
-        mov     r10d, [nbrd]                ; R10D = number of characters written to buffer
+        mov     r10d, [nbrd]                ; R10D = number of bytes written to buffer
         mov     eax, [num_wspace]           ; EAX = number of white spaces to skip in the buffer
-        sub     r10d, eax                   ; Subtract white space character count from buffer length
+        sub     r10d, eax                   ; Subtract white space count from buffer length
         mov     rcx, [stdout]
         lea     rdx, buffer
         add     rdx, rax                    ; Advance to buffer past white spaces
         mov     r8d, r10d
         lea     r9, nbwr
         mov     QWORD PTR [rsp+32], 0
-        call    WriteConsoleA
+        call    WriteFile
 
         ; Compare loop has three functions:
         ; 1. Build a string from SysTime stuct for printing (wHour:wMinute).
@@ -296,17 +298,17 @@ compare_loop:
         ; 'lbl_local' begins with CR to overwrite the current line on each update.
         mov     rcx, [stdout]
         lea     rdx, lbl_local
-        mov     r8, LENGTHOF lbl_local
+        mov     r8, SIZEOF lbl_local
         lea     r9, nbwr
         mov     QWORD PTR [rsp+32], 0
-        call    WriteConsoleA
+        call    WriteFile
 
         mov     rcx, [stdout]
         lea     rdx, str_local
         mov     r8d, r12d
         lea     r9, nbwr
         mov     QWORD PTR [rsp+32], 0
-        call    WriteConsoleA
+        call    WriteFile
 
         ; Compare current time to alarm set time.
         lea     rcx, SysTime
@@ -326,10 +328,10 @@ compare_loop:
 alarm:
         mov     rcx, [stdout]
         lea     rdx, dblsp
-        mov     r8, LENGTHOF dblsp
+        mov     r8, SIZEOF dblsp
         lea     r9, nbwr
         mov     QWORD PTR [rsp+32], 0
-        call    WriteConsoleA
+        call    WriteFile
 
         mov     ebx, 400                    ; EBX = number of alarm cycles (400 = 10 minutes)
 beep_loop:
@@ -339,19 +341,19 @@ beep_loop:
 
         mov     rcx, [stdout]
         lea     rdx, blank
-        mov     r8, LENGTHOF blank
+        mov     r8, SIZEOF blank
         lea     r9, nbwr
         mov     QWORD PTR [rsp+32], 0
-        call    WriteConsoleA               ; Write blank message
+        call    WriteFile                   ; Write blank message
 
         mov     ecx, 500                    ; Sleep 500 ms
         call    Sleep
         mov     rcx, [stdout]
         lea     rdx, wake
-        mov     r8, LENGTHOF wake
+        mov     r8, SIZEOF wake
         lea     r9, nbwr
         mov     QWORD PTR [rsp+32], 0
-        call    WriteConsoleA               ; Write 'Alarm!' message
+        call    WriteFile                   ; Write 'Alarm!' message
 
         dec     ebx                         ; Decrement cycles
         test    ebx, ebx
@@ -361,10 +363,10 @@ beep_loop:
 exit:
         mov     rcx, [stdout]
         lea     rdx, done
-        mov     r8, LENGTHOF done
+        mov     r8, SIZEOF done
         lea     r9, nbwr
         mov     QWORD PTR [rsp+32], 0
-        call    WriteConsoleA
+        call    WriteFile
 
         xor     ecx, ecx                    ; uExitCode
         call    ExitProcess
