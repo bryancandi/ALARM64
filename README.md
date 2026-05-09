@@ -13,7 +13,7 @@ ALARM64 v1.0
 
 Enter alarm target time (HH:MM): 07:00
 
-Press Ctrl-C to terminate.
+Press Escape key to terminate alarm.
 
 Alarm set time: 07:00
 Current time:   18:33
@@ -28,5 +28,5 @@ Current time:   18:33
 To assemble and link the project, use the Microsoft Macro Assembler (included with Visual Studio Build Tools):
 
 ```powershell
-ml64.exe alarm64.asm /link /SUBSYSTEM:console /ENTRY:main /OUT:ALARM64.exe
+ml64.exe alarm64.asm /link /SUBSYSTEM:console /ENTRY:Start /OUT:ALARM64.exe
 ```
