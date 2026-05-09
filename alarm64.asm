@@ -311,8 +311,6 @@ compare_loop:
         call    WriteFile
 
         ; Compare current time to alarm set time.
-        lea     rcx, SysTime
-        call    GetLocalTime
         movzx   eax, SysTime.wHour
         movzx   ecx, SysTime.wMinute
         imul    eax, eax, 100               ; EAX = hours * 100 (12 to 1200)
@@ -320,7 +318,7 @@ compare_loop:
         mov     edx, [alarm_time]
         cmp     eax, edx                    ; Have we reached the alarm set time?
         je      alarm                       ; Yes, sound the alarm
-        mov     ecx, 10000                  ; dwMilliseconds (ms)
+        mov     ecx, 1000                   ; dwMilliseconds (ms)
         call    Sleep                       ; No, sleep, then check again
         jmp     compare_loop
 
