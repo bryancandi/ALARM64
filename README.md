@@ -20,7 +20,7 @@ Current time:   18:33
 ```
 
 ## Features
-- **Small Footprint** - Written in pure x86-64 MASM assembly; uses under 3 MB RAM.
+- **Small Footprint** - Written in pure x86-64 MASM assembly; ALARM64.exe process uses under 1 MB RAM.
 - **Native Application** - Uses native Windows API calls for system time, timers, alarms.
 - **Alarm Logic** - Sounds the alarm on the next occurrence of the entered target time whether it is the same day or the next day.
 
