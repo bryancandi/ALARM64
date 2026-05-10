@@ -41,7 +41,8 @@ SYSTEMTIME ENDS
 
         .DATA
 SysTime     SYSTEMTIME <>                   ; Instance of SYSTEMTIME with default initialization
-header      BYTE    "ALARM64 v1.0", 0Dh, 0Ah
+header      BYTE    0Dh, 0Ah, "ALARM64 v1.0", 0Dh, 0Ah
+separator   BYTE    "----------------------------------------", 0Dh, 0Ah
 prompt      BYTE    0Dh, 0Ah, "Enter alarm target time (HH:MM): "
 error       BYTE    0Dh, 0Ah, "Invalid time format. Use 24h HH:MM.", 0Dh, 0Ah
 quit        BYTE    0Dh, 0Ah, "Press Escape key to terminate alarm.", 0Dh, 0Ah
@@ -83,6 +84,13 @@ Start   PROC    USES rbx rsi rdi r12
         mov     r8, SIZEOF header           ; Arg 3 = nNumberOfBytesToWrite (value)
         lea     r9, nbwr                    ; Arg 4 = lpNumberOfBytesWritten (pointer)
         mov     QWORD PTR [rsp+32], 0       ; Arg 5 = lpOverlapped (NULL pointer on stack)
+        call    WriteFile
+
+        mov     rcx, [stdout]
+        lea     rdx, separator
+        mov     r8, SIZEOF separator
+        lea     r9, nbwr
+        mov     QWORD PTR [rsp+32], 0
         call    WriteFile
 
         ; Prompt and read input.
@@ -218,7 +226,7 @@ time_valid:
         xor     rax, rax
         lea     rcx, fmtbuf                 ; RCX = pointer to formatted buffer
 str_to_int_loop:
-        movzx   rdx, BYTE PTR [rcx + r8]    ; RDX = digit character at buffer[index], zero-extended
+        movzx   rdx, BYTE PTR [rcx+r8]      ; RDX = digit character at buffer[index], zero-extended
         sub     rdx, '0'
         imul    rax, rax, 10
         add     rax, rdx
