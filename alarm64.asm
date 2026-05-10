@@ -27,6 +27,16 @@ STD_OUTPUT_HANDLE   EQU -11
 MaxSize             EQU 64
 VK_ESCAPE           EQU 1Bh                 ; Escape key code for GetAsyncKeyState
 
+; WriteFile macro for static buffers.
+mWriteFile  MACRO   buffer:REQ
+    mov     rcx, [stdout]                   ; Arg 1 = hFile (value)
+    lea     rdx, buffer                     ; Arg 2 = lpBuffer (pointer)
+    mov     r8, SIZEOF buffer               ; Arg 3 = nNumberOfBytesToWrite (value)
+    lea     r9, nbwr                        ; Arg 4 = lpNumberOfBytesWritten (pointer)
+    mov     QWORD PTR [rsp+32], 0           ; Arg 5 = lpOverlapped (NULL pointer on stack)
+    call    WriteFile
+ENDM
+
 ; SYSTEMTIME structure populated by GetLocalTime.
 SYSTEMTIME STRUCT
     wYear           WORD ?
@@ -78,29 +88,13 @@ Start   PROC    USES rbx rsi rdi r12
         call    GetStdHandle
         mov     [stdout], rax               ; Store handle for use with WriteFile
 
-        ; Display header.
-        mov     rcx, [stdout]               ; Arg 1 = hFile (value)
-        lea     rdx, header                 ; Arg 2 = lpBuffer (pointer)
-        mov     r8, SIZEOF header           ; Arg 3 = nNumberOfBytesToWrite (value)
-        lea     r9, nbwr                    ; Arg 4 = lpNumberOfBytesWritten (pointer)
-        mov     QWORD PTR [rsp+32], 0       ; Arg 5 = lpOverlapped (NULL pointer on stack)
-        call    WriteFile
+        ; Write header and separator.
+        mWriteFile  header
+        mWriteFile  separator
 
-        mov     rcx, [stdout]
-        lea     rdx, separator
-        mov     r8, SIZEOF separator
-        lea     r9, nbwr
-        mov     QWORD PTR [rsp+32], 0
-        call    WriteFile
-
-        ; Prompt and read input.
+        ; Write prompt and read input.
 time_prompt:
-        mov     rcx, [stdout]
-        lea     rdx, prompt
-        mov     r8, SIZEOF prompt
-        lea     r9, nbwr
-        mov     QWORD PTR [rsp+32], 0
-        call    WriteFile
+        mWriteFile  prompt
 
         mov     rcx, [stdin]                ; Arg 1 = hFile (value)
         lea     rdx, buffer                 ; Arg 2 = lpBuffer (pointer)
@@ -211,12 +205,7 @@ consume_separator:
         jmp     minute_first_digit
 
 time_invalid:
-        mov     rcx, [stdout]
-        lea     rdx, error
-        mov     r8d, SIZEOF error
-        lea     r9, nbwr
-        mov     QWORD PTR [rsp+32], 0
-        call    WriteFile
+        mWriteFile  error
         jmp     time_prompt
 time_valid:
 
@@ -236,20 +225,9 @@ str_to_int_loop:
         jnz     str_to_int_loop
         mov     [alarm_time], eax           ; Store alarm time in 'alarm_time'
 
-        ; Alarm is set; print set time.
-        mov     rcx, [stdout]
-        lea     rdx, quit
-        mov     r8, SIZEOF quit
-        lea     r9, nbwr
-        mov     QWORD PTR [rsp+32], 0
-        call    WriteFile
-
-        mov     rcx, [stdout]
-        lea     rdx, lbl_alarm
-        mov     r8, SIZEOF lbl_alarm
-        lea     r9, nbwr
-        mov     QWORD PTR [rsp+32], 0
-        call    WriteFile
+        ; Alarm is set; write quit message and set time.
+        mWriteFile  quit
+        mWriteFile  lbl_alarm
 
         mov     r10d, [nbrd]                ; R10D = number of bytes written to buffer
         mov     eax, [num_wspace]           ; EAX = number of white spaces to skip in the buffer
@@ -314,21 +292,10 @@ compare_loop:
         mov     [rdi], dl
         inc     r12d
 
-        ; Print local time label and local time string.
+        ; Write local time label and local time string.
         ; 'lbl_local' begins with CR to overwrite the current line on each update.
-        mov     rcx, [stdout]
-        lea     rdx, lbl_local
-        mov     r8, SIZEOF lbl_local
-        lea     r9, nbwr
-        mov     QWORD PTR [rsp+32], 0
-        call    WriteFile
-
-        mov     rcx, [stdout]
-        lea     rdx, str_local
-        mov     r8d, r12d
-        lea     r9, nbwr
-        mov     QWORD PTR [rsp+32], 0
-        call    WriteFile
+        mWriteFile  lbl_local
+        mWriteFile  str_local
 
         ; Compare current time to alarm set time.
         movzx   eax, SysTime.wHour
@@ -344,13 +311,7 @@ compare_loop:
 
         ; Sound the alarm!
 alarm:
-        mov     rcx, [stdout]
-        lea     rdx, dblsp
-        mov     r8, SIZEOF dblsp
-        lea     r9, nbwr
-        mov     QWORD PTR [rsp+32], 0
-        call    WriteFile
-
+        mWriteFile  dblsp                   ; Write double space
         mov     ebx, 400                    ; EBX = number of alarm cycles (400 = 10 minutes)
 beep_loop:
         mov     ecx, VK_ESCAPE
@@ -362,21 +323,12 @@ beep_loop:
         mov     edx, 1000                   ; dwDuration (ms)
         call    Beep
 
-        mov     rcx, [stdout]
-        lea     rdx, blank
-        mov     r8, SIZEOF blank
-        lea     r9, nbwr
-        mov     QWORD PTR [rsp+32], 0
-        call    WriteFile                   ; Write blank message
+        mWriteFile  blank                   ; Write blank message
 
         mov     ecx, 500                    ; Sleep 500 ms
         call    Sleep
-        mov     rcx, [stdout]
-        lea     rdx, wake
-        mov     r8, SIZEOF wake
-        lea     r9, nbwr
-        mov     QWORD PTR [rsp+32], 0
-        call    WriteFile                   ; Write 'Alarm!' message
+
+        mWriteFile  wake                    ; Write 'Alarm!' message
 
         dec     ebx                         ; Decrement cycles
         test    ebx, ebx
@@ -384,20 +336,10 @@ beep_loop:
         jmp     beep_loop
 
 exit_esc:
-        mov     rcx, [stdout]
-        lea     rdx, esc_done
-        mov     r8, SIZEOF esc_done
-        lea     r9, nbwr
-        mov     QWORD PTR [rsp+32], 0
-        call    WriteFile
+        mWriteFile  esc_done                ; Write ESC alarm termination message
         jmp     exit
 exit_done:
-        mov     rcx, [stdout]
-        lea     rdx, done
-        mov     r8, SIZEOF done
-        lea     r9, nbwr
-        mov     QWORD PTR [rsp+32], 0
-        call    WriteFile
+        mWriteFile  done                    ; Write alarm completed message
 exit:
         xor     ecx, ecx                    ; uExitCode
         call    ExitProcess
