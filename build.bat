@@ -6,5 +6,5 @@ if errorlevel 1 goto :eof
 rc.exe alarm64.rc
 if errorlevel 1 goto :eof
 
-link alarm64.obj alarm64.res /SUBSYSTEM:console /ENTRY:Start /OUT:ALARM64.exe
+link.exe alarm64.obj alarm64.res /SUBSYSTEM:console /ENTRY:Start /OUT:ALARM64.exe
 if errorlevel 1 goto :eof
