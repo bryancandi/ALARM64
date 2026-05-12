@@ -35,6 +35,8 @@ mWriteFile  MACRO   buffer:REQ
     lea     r9, nbwr                        ; Arg 4 = lpNumberOfBytesWritten (pointer)
     mov     QWORD PTR [rsp+32], 0           ; Arg 5 = lpOverlapped (NULL pointer on stack)
     call    WriteFile
+    test    eax, eax                        ; Non-zero = success; zero = failure
+    jz      write_failure
 ENDM
 
 ; SYSTEMTIME structure populated by GetLocalTime.
@@ -65,6 +67,10 @@ esc_done    BYTE    0Dh, 0Ah, "Alarm terminated.", 0Dh, 0Ah
 cr          BYTE    0Dh
 crlf        BYTE    0Dh, 0Ah
 dblsp       BYTE    0Dh, 0Ah, 0Ah
+err_handle  BYTE    0Dh, 0Ah, "ALARM64: GetStdHandle system call failure.", 0Dh, 0Ah
+err_read    BYTE    0Dh, 0Ah, "ALARM64: ReadFile system call failure.", 0Dh, 0Ah
+err_write   BYTE    0Dh, 0Ah, "ALARM64: WriteFile system call failure.", 0Dh, 0Ah
+err_beep    BYTE    0Dh, 0Ah, "ALARM64: Beep system call failure.", 0Dh, 0Ah
 buffer      BYTE    MaxSize DUP (?)
 fmtbuf      BYTE    MaxSize DUP (?)
 str_local   BYTE    MaxSize DUP (?)
@@ -82,10 +88,14 @@ start   PROC    USES rbx rsi rdi r12
 
         mov     rcx, STD_INPUT_HANDLE       ; nStdHandle
         call    GetStdHandle
+        cmp     eax, -1                     ; Check for failure code (-1)
+        je      get_handle_failure
         mov     [stdin], rax                ; Store handle for use with ReadFile
 
         mov     rcx, STD_OUTPUT_HANDLE      ; nStdHandle
         call    GetStdHandle
+        cmp     eax, -1                     ; Check for failure code (-1)
+        je      get_handle_failure
         mov     [stdout], rax               ; Store handle for use with WriteFile
 
         ; Write header and separator.
@@ -102,6 +112,8 @@ time_prompt:
         lea     r9, nbrd                    ; Arg 4 = lpNumberOfBytesRead (pointer)
         mov     QWORD PTR [rsp+32], 0       ; Arg 5 = lpOverlapped (NULL pointer on stack)
         call    ReadFile
+        test    eax, eax                    ; Non-zero = success; zero = failure
+        jz      read_failure
 
         ; Validate user input; acceptable format = HH:MM.
         lea     rsi, buffer                 ; RSI = pointer to source buffer
@@ -239,6 +251,8 @@ str_to_int_loop:
         lea     r9, nbwr
         mov     QWORD PTR [rsp+32], 0
         call    WriteFile
+        test    eax, eax                    ; Non-zero = success; zero = failure
+        jz      write_failure
 
         ; Compare loop has four functions:
         ; 1. Check if ESCAPE key has been pressed; exit if yes.
@@ -322,6 +336,8 @@ beep_loop:
         mov     ecx, 700                    ; dwFreq (Hz)
         mov     edx, 1000                   ; dwDuration (ms)
         call    Beep
+        test    eax, eax                    ; Non-zero = success; zero = failure
+        jz      beep_failure
 
         mWriteFile  blank                   ; Write blank message
 
@@ -334,6 +350,19 @@ beep_loop:
         test    ebx, ebx
         jz      exit_done
         jmp     beep_loop
+
+get_handle_failure:
+        mWriteFile  err_handle
+        jmp     exit
+read_failure:
+        mWriteFile  err_read
+        jmp     exit
+write_failure:
+        mWriteFile  err_write
+        jmp     exit
+beep_failure:
+        mWriteFile  err_beep
+        jmp     exit
 
 exit_esc:
         mWriteFile  esc_done                ; Write ESC alarm termination message
