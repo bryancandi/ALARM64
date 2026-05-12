@@ -63,7 +63,7 @@ lbl_local   BYTE    0Dh, "Current time:   "
 wake        BYTE    0Dh, "Alarm!"
 blank       BYTE    0Dh, "      "
 done        BYTE    0Dh, "Alarm completed.", 0Dh, 0Ah
-esc_done    BYTE    0Dh, 0Ah, "Alarm terminated.", 0Dh, 0Ah  
+esc_done    BYTE    0Dh, 0Ah, "Alarm terminated by user.", 0Dh, 0Ah  
 cr          BYTE    0Dh
 crlf        BYTE    0Dh, 0Ah
 dblsp       BYTE    0Dh, 0Ah, 0Ah
