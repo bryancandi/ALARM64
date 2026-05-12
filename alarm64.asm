@@ -237,7 +237,15 @@ str_to_int_loop:
         jnz     str_to_int_loop
         mov     [alarm_time], eax           ; Store alarm time in 'alarm_time'
 
-        ; Alarm is set; write quit message and set time.
+        ; Alarm is set.
+        ; Sound a test tone to ensure the alarm cannot fail silently due to a Beep system call failure.
+        ; Write ESC to terminate message and alarm set time.
+        mov     ecx, 700                    ; dwFreq (Hz)
+        mov     edx, 250                    ; dwDuration (ms)
+        call    Beep
+        test    eax, eax                    ; Non-zero = success; zero = failure
+        jz      beep_failure
+
         mWriteFile  quit
         mWriteFile  lbl_alarm
 
