@@ -30,5 +30,5 @@ Current time:   20:16
 To assemble and link the project, use the Microsoft Macro Assembler (included with Visual Studio Build Tools):
 
 ```powershell
-ml64.exe alarm64.asm /link /SUBSYSTEM:console /ENTRY:Start /OUT:ALARM64.exe
+ml64.exe alarm64.asm /link /SUBSYSTEM:console /ENTRY:start /OUT:ALARM64.exe
 ```

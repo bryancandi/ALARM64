@@ -2,7 +2,7 @@
 ; ALARM64.ASM - x64 Interactive Command-line Alarm Clock Utility
 ;
 ; Assemble and link with:
-; ml64.exe alarm64.asm /link /SUBSYSTEM:console /ENTRY:Start /OUT:ALARM64.exe
+; ml64.exe alarm64.asm /link /SUBSYSTEM:console /ENTRY:start /OUT:ALARM64.exe
 ;
 ; Copyright (c) 2026 by Bryan C.
 ; Licensed under the Apache License, Version 2.0
@@ -77,7 +77,7 @@ num_digits  DWORD   ?
 alarm_time  DWORD   ?
 
         .CODE
-Start   PROC    USES rbx rsi rdi r12
+start   PROC    USES rbx rsi rdi r12
         sub     rsp, 40                     ; Reserve shadow space on stack (32 bytes + 8 to align)
 
         mov     rcx, STD_INPUT_HANDLE       ; nStdHandle
@@ -343,5 +343,5 @@ exit_done:
 exit:
         xor     ecx, ecx                    ; uExitCode
         call    ExitProcess
-Start   ENDP
+start   ENDP
         END
