@@ -30,9 +30,9 @@ VK_ESCAPE           EQU 1Bh                 ; Escape key code for GetAsyncKeySta
 ; WriteFile macro for static buffers.
 mWriteFile  MACRO   buffer:REQ
     mov     rcx, [stdout]                   ; Arg 1 = hFile (value)
-    lea     rdx, buffer                     ; Arg 2 = lpBuffer (pointer)
+    mov     rdx, OFFSET buffer              ; Arg 2 = lpBuffer (pointer)
     mov     r8, SIZEOF buffer               ; Arg 3 = nNumberOfBytesToWrite (value)
-    lea     r9, nbwr                        ; Arg 4 = lpNumberOfBytesWritten (pointer)
+    mov     r9, OFFSET nbwr                 ; Arg 4 = lpNumberOfBytesWritten (pointer)
     mov     QWORD PTR [rsp+32], 0           ; Arg 5 = lpOverlapped (NULL pointer on stack)
     call    WriteFile
     test    eax, eax                        ; Non-zero = success; zero = failure
@@ -107,17 +107,17 @@ time_prompt:
         mWriteFile  prompt
 
         mov     rcx, [stdin]                ; Arg 1 = hFile (value)
-        lea     rdx, buffer                 ; Arg 2 = lpBuffer (pointer)
+        mov     rdx, OFFSET buffer          ; Arg 2 = lpBuffer (pointer)
         mov     r8, MaxSize                 ; Arg 3 = nNumberOfBytesToRead (value)
-        lea     r9, nbrd                    ; Arg 4 = lpNumberOfBytesRead (pointer)
+        mov     r9, OFFSET nbrd             ; Arg 4 = lpNumberOfBytesRead (pointer)
         mov     QWORD PTR [rsp+32], 0       ; Arg 5 = lpOverlapped (NULL pointer on stack)
         call    ReadFile
         test    eax, eax                    ; Non-zero = success; zero = failure
         jz      read_failure
 
         ; Validate user input; acceptable format = HH:MM.
-        lea     rsi, buffer                 ; RSI = pointer to source buffer
-        lea     rdi, fmtbuf                 ; RDI = pointer to destination buffer
+        mov     rsi, OFFSET buffer          ; RSI = address of source buffer
+        mov     rdi, OFFSET fmtbuf          ; RDI = address of destination buffer
         xor     r8d, r8d                    ; R8D = white space counter
         xor     r9d, r9d                    ; R9D = digit counter (this should always = 4)
 
@@ -225,7 +225,7 @@ time_valid:
         mov     ebx, [num_digits]           ; EBX = number of characters in the string
         xor     r8, r8                      ; R8 = buffer position index (0)
         xor     rax, rax
-        lea     rcx, fmtbuf                 ; RCX = pointer to formatted buffer
+        mov     rcx, OFFSET fmtbuf          ; RCX = address of formatted buffer
 str_to_int_loop:
         movzx   rdx, BYTE PTR [rcx+r8]      ; RDX = digit character at buffer[index], zero-extended
         sub     rdx, '0'
@@ -253,10 +253,10 @@ str_to_int_loop:
         mov     eax, [num_wspace]           ; EAX = number of white spaces to skip in the buffer
         sub     r10d, eax                   ; Subtract white space count from buffer length
         mov     rcx, [stdout]
-        lea     rdx, buffer
+        mov     rdx, OFFSET buffer
         add     rdx, rax                    ; Advance to buffer past white spaces
         mov     r8d, r10d
-        lea     r9, nbwr
+        mov     r9, OFFSET nbwr
         mov     QWORD PTR [rsp+32], 0
         call    WriteFile
         test    eax, eax                    ; Non-zero = success; zero = failure
@@ -276,9 +276,9 @@ compare_loop:
         test    ax, 8001h                   ; Text AX. Non-zero if either LSB or MSB is set.
         jnz     exit_esc
     
-        lea     rdi, str_local              ; RDI = pointer to buffer to build local time string
+        mov     rdi, OFFSET str_local       ; RDI = address of buffer to build local time string
         xor     r12d, r12d                  ; R12D = counter for characters written to local time string
-        lea     rcx, SysTime                ; Arg 1 = pointer to the structure
+        mov     rcx, OFFSET SysTime         ; Arg 1 = address of the time structure
         call    GetLocalTime                ; Call to populate the struct with current time data
 
         ; Store hours in buffer.
@@ -317,7 +317,15 @@ compare_loop:
         ; Write local time label and local time string.
         ; 'lbl_local' begins with CR to overwrite the current line on each update.
         mWriteFile  lbl_local
-        mWriteFile  str_local
+
+        mov     rcx, [stdout]
+        mov     rdx, OFFSET str_local
+        mov     r8d, r12d                   ; R12D = number of characters written to 'str_local'
+        mov     r9, OFFSET nbwr
+        mov     QWORD PTR [rsp+32], 0
+        call    WriteFile
+        test    eax, eax                    ; Non-zero = success; zero = failure
+        jz      write_failure
 
         ; Compare current time to alarm set time.
         movzx   eax, SysTime.wHour
