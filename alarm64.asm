@@ -1,4 +1,4 @@
-;==============================================================================
+;============================================================================
 ; ALARM64.ASM - x64 Interactive Command-line Alarm Clock Utility
 ;
 ; Assemble and link with:
@@ -6,41 +6,114 @@
 ;
 ; Copyright (c) 2026 by Bryan C.
 ; Licensed under the Apache License, Version 2.0
-;==============================================================================
+;============================================================================
 
 INCLUDELIB kernel32.lib                     ; Link the Windows kernel library for system functions
 INCLUDELIB user32.lib                       ; Link the Windows user interface library
 
+;----------------------------------------------------------------------------
 ; Win32 function prototypes with arguments.
 ; x64 args in: RCX, RDX, R8, R9, stack
+;----------------------------------------------------------------------------
+
 ExitProcess         PROTO uExitCode:DWORD
 GetStdHandle        PROTO nStdHandle:DWORD
-ReadFile            PROTO hFile:QWORD, lpBuffer:PTR, nNumberOfBytesToRead:DWORD, lpNumberOfBytesRead:PTR, lpOverlapped:PTR
-WriteFile           PROTO hFile:QWORD, lpBuffer:PTR, nNumberOfBytesToWrite:DWORD, lpNumberOfBytesWritten:PTR, lpOverlapped:PTR
 GetLocalTime        PROTO lpSystemTime:PTR SYSTEMTIME
-GetAsyncKeyState    PROTO vKey:DWORD
 Beep                PROTO dwFreq:DWORD, dwDuration:DWORD
 Sleep               PROTO dwMilliseconds:DWORD
+ReadFile            PROTO hFile:QWORD, lpBuffer:PTR, nNumberOfBytesToRead:DWORD, lpNumberOfBytesRead:PTR, lpOverlapped:PTR
+WriteFile           PROTO hFile:QWORD, lpBuffer:PTR, nNumberOfBytesToWrite:DWORD, lpNumberOfBytesWritten:PTR, lpOverlapped:PTR
+ReadConsoleInputW   PROTO hConsoleInput:QWORD, lpBuffer:PTR INPUT_RECORD, nLength:DWORD, lpNumberOfEventsRead:PTR
+GetNumberOfConsoleInputEvents PROTO hConsoleInput:QWORD, lpcNumberOfEvents:PTR
+
+;----------------------------------------------------------------------------
+; Constants
+;----------------------------------------------------------------------------
 
 STD_INPUT_HANDLE    EQU -10
 STD_OUTPUT_HANDLE   EQU -11
 MaxSize             EQU 64
-VK_ESCAPE           EQU 1Bh                 ; Escape key code
-VK_SHIFT            EQU 10h                 ; Shift key code
+KEY_EVENT           EQU 0001h               ; KEY_EVENT_RECORD structure
+KEY_DOWN            EQU 1h                  ; KEY_DOWN TRUE
+VK_ESCAPE           EQU 1Bh                 ; Escape virtual key code
+
+;----------------------------------------------------------------------------
+; Macros
+;----------------------------------------------------------------------------
 
 ; WriteFile macro for static buffers.
 mWriteFile  MACRO   buffer:REQ
     mov     rcx, [stdout]                   ; Arg 1 = hFile (value)
-    mov     rdx, OFFSET buffer              ; Arg 2 = lpBuffer (pointer)
+    lea     rdx, buffer                     ; Arg 2 = lpBuffer (pointer)
     mov     r8, SIZEOF buffer               ; Arg 3 = nNumberOfBytesToWrite (value)
-    mov     r9, OFFSET nbwr                 ; Arg 4 = lpNumberOfBytesWritten (pointer)
+    lea     r9, nbwr                        ; Arg 4 = lpNumberOfBytesWritten (pointer)
     mov     QWORD PTR [rsp+32], 0           ; Arg 5 = lpOverlapped (NULL pointer on stack)
     call    WriteFile
     test    eax, eax                        ; Non-zero = success; zero = failure
     jz      write_failure
 ENDM
 
-; SYSTEMTIME structure populated by GetLocalTime.
+; Handle console input events and check for exit key press.
+mReadExitKey MACRO
+    LOCAL   event_loop, continue
+event_loop:
+    ; Was a an input event detected?
+    mov     rcx, [stdin]                    ; Handle to console input buffer
+    lea     rdx, eventsRead                 ; Pointer to a variable that receives the number of input records read
+    call    GetNumberOfConsoleInputEvents
+    test    rax, rax                        ; Non-zero = success; zero = failure
+    jz      continue                        ; API failed, disregard and keep running the alarm
+    cmp     eventsRead, 0                   ; Any events read?
+    je      continue                        ; No, continue
+
+    ; If this code is reached, an input event was detected; process it.
+    mov     rcx, [stdin]                    ; Handle to console input buffer
+    lea     rdx, irInBuf                    ; Pointer to array of INPUT_RECORD structures that receives the input buffer data
+    mov     r8, 1                           ; Size of the array pointed to by the lpBuffer parameter, in array elements
+    lea     r9, eventsRead                  ; Pointer to a variable that receives the number of input records read
+    call    ReadConsoleInputW               ; Call to populate struct with key events
+    test    rax, rax                        ; Non-zero = success; zero = failure
+    jz      continue                        ; API failed, disregard and keep running the alarm
+
+    cmp     irInBuf.EventType, KEY_EVENT    ; Was the event a KEY_EVENT?
+    jne     event_loop                      ; No, go back and check again
+    cmp     irInBuf.KeyEvent.bKeyDown, KEY_DOWN ; Was the event a KEY_DOWN?
+    jne     event_loop                      ; No, go back and check again
+    cmp     irInBuf.KeyEvent.wVirtualKeyCode, VK_ESCAPE ; Escape key pressed?
+    je      exit_esc                        ; Yes, exit
+    jmp     event_loop                      ; No, key was not Escape, go back and check again
+continue:
+ENDM
+
+;----------------------------------------------------------------------------
+; Structures
+;----------------------------------------------------------------------------
+
+; Key Event Record and Input Record structure populated by ReadConsoleInput.
+KEY_EVENT_RECORD STRUCT
+    bKeyDown          DWORD ?
+    wRepeateCount     WORD  ?
+    wVirtualKeyCode   WORD  ?
+    wVirtualScanCode  WORD  ?
+
+    UNION
+        UnicodeChar   WORD  ?
+        AsciiChar     BYTE  ?
+    ENDS
+
+    dwControlKeyState DWORD ?
+KEY_EVENT_RECORD ENDS
+
+INPUT_RECORD STRUCT
+    EventType       WORD ?
+    Reserved        WORD ?
+
+    UNION
+        KeyEvent    KEY_EVENT_RECORD <>
+    ENDS
+INPUT_RECORD ENDS
+
+; System Time structure populated by GetLocalTime.
 SYSTEMTIME STRUCT
     wYear           WORD ?
     wMonth          WORD ?
@@ -52,13 +125,18 @@ SYSTEMTIME STRUCT
     wMilliseconds   WORD ?
 SYSTEMTIME ENDS
 
+;----------------------------------------------------------------------------
+; Data Segment
+;----------------------------------------------------------------------------
+
         .DATA
+irInBuf     INPUT_RECORD <>                 ; Instance of INPUT_RECORD with default initialization
 SysTime     SYSTEMTIME <>                   ; Instance of SYSTEMTIME with default initialization
-header      BYTE    0Dh, 0Ah, "ALARM64 v1.0", 0Dh, 0Ah
+header      BYTE    0Dh, 0Ah, "ALARM64 v1.1", 0Dh, 0Ah
 separator   BYTE    "----------------------------------------", 0Dh, 0Ah
 prompt      BYTE    0Dh, 0Ah, "Enter alarm target time (HH:MM): "
 error       BYTE    0Dh, 0Ah, "Invalid time format. Use 24h HH:MM.", 0Dh, 0Ah
-quit        BYTE    0Dh, 0Ah, "Hold Shift + Escape to cancel the alarm.", 0Dh, 0Ah
+quit        BYTE    0Dh, 0Ah, "Press Escape key to cancel the alarm.", 0Dh, 0Ah
 lbl_alarm   BYTE    0Dh, 0Ah, "Alarm set time: "
 lbl_local   BYTE    0Dh, "Current time:   "
 wake        BYTE    0Dh, "Alarm!"
@@ -77,11 +155,16 @@ fmtbuf      BYTE    MaxSize DUP (?)
 str_local   BYTE    MaxSize DUP (?)
 stdin       QWORD   ?
 stdout      QWORD   ?
-nbrd        DWORD   ?
-nbwr        DWORD   ?
+nbrd        DWORD   ?                       ; Number of bytes read
+nbwr        DWORD   ?                       ; Number of bytes written
+eventsRead  DWORD   ?                       ; Number of input events read
 num_wspace  DWORD   ?
 num_digits  DWORD   ?
 alarm_time  DWORD   ?
+
+;----------------------------------------------------------------------------
+; Code Segment
+;----------------------------------------------------------------------------
 
         .CODE
 start   PROC    USES rbx rsi rdi r12
@@ -108,17 +191,17 @@ time_prompt:
         mWriteFile  prompt
 
         mov     rcx, [stdin]                ; Arg 1 = hFile (value)
-        mov     rdx, OFFSET buffer          ; Arg 2 = lpBuffer (pointer)
+        lea     rdx, buffer                 ; Arg 2 = lpBuffer (pointer)
         mov     r8, MaxSize                 ; Arg 3 = nNumberOfBytesToRead (value)
-        mov     r9, OFFSET nbrd             ; Arg 4 = lpNumberOfBytesRead (pointer)
+        lea     r9, nbrd                    ; Arg 4 = lpNumberOfBytesRead (pointer)
         mov     QWORD PTR [rsp+32], 0       ; Arg 5 = lpOverlapped (NULL pointer on stack)
         call    ReadFile
         test    eax, eax                    ; Non-zero = success; zero = failure
         jz      read_failure
 
         ; Validate user input; acceptable format = HH:MM.
-        mov     rsi, OFFSET buffer          ; RSI = address of source buffer
-        mov     rdi, OFFSET fmtbuf          ; RDI = address of destination buffer
+        lea     rsi, buffer                 ; RSI = pointer to source buffer
+        lea     rdi, fmtbuf                 ; RDI = pointer to destination buffer
         xor     r8d, r8d                    ; R8D = white space counter
         xor     r9d, r9d                    ; R9D = digit counter (this should always = 4)
 
@@ -226,7 +309,7 @@ time_valid:
         mov     ebx, [num_digits]           ; EBX = number of characters in the string
         xor     r8, r8                      ; R8 = buffer position index (0)
         xor     rax, rax
-        mov     rcx, OFFSET fmtbuf          ; RCX = address of formatted buffer
+        lea     rcx, fmtbuf                 ; RCX = pointer to formatted buffer
 str_to_int_loop:
         movzx   rdx, BYTE PTR [rcx+r8]      ; RDX = digit character at buffer[index], zero-extended
         sub     rdx, '0'
@@ -254,10 +337,10 @@ str_to_int_loop:
         mov     eax, [num_wspace]           ; EAX = number of white spaces to skip in the buffer
         sub     r10d, eax                   ; Subtract white space count from buffer length
         mov     rcx, [stdout]
-        mov     rdx, OFFSET buffer
+        lea     rdx, buffer
         add     rdx, rax                    ; Advance to buffer past white spaces
         mov     r8d, r10d
-        mov     r9, OFFSET nbwr
+        lea     r9, nbwr
         mov     QWORD PTR [rsp+32], 0
         call    WriteFile
         test    eax, eax                    ; Non-zero = success; zero = failure
@@ -271,19 +354,12 @@ str_to_int_loop:
         ; 3. Combine wMinute and wHour into a 4 digit integer time format (HHMM).
         ; 4. Compare alarm set time to the system local time, jump to alarm when they match.
 compare_loop:
-        mov     ecx, VK_SHIFT               ; Arg 1 = first virtual key code to listen for (SHIFT)
-        call    GetAsyncKeyState            ; Check if key is currently down
-        test    ax, 8000h                   ; Text AX; non-zero if MSB is set
-        jz      @f                          ; If Shift is not held, skip ESC check
-        mov     ecx, VK_ESCAPE              ; Arg 1 = second virtual key code to listen for (ESCAPE)
-        call    GetAsyncKeyState
-        test    ax, 8000h
-        jnz     exit_esc
-@@:
-        mov     rdi, OFFSET str_local       ; RDI = address of buffer to build local time string
+        mReadExitKey                        ; Check for exit key press.
+
+        lea     rdi, str_local              ; RDI = pointer to buffer to build local time string
         xor     r12d, r12d                  ; R12D = counter for characters written to local time string
-        mov     rcx, OFFSET SysTime         ; Arg 1 = address of the time structure
-        call    GetLocalTime                ; Call to populate the struct with current time data
+        lea     rcx, SysTime                ; Arg 1 = pointer to the time structure
+        call    GetLocalTime                ; Call to populate struct with current time data
 
         ; Store hours in buffer.
         xor     edx, edx                    ; EDX = division remainder (clear)
@@ -323,9 +399,9 @@ compare_loop:
         mWriteFile  lbl_local
 
         mov     rcx, [stdout]
-        mov     rdx, OFFSET str_local
+        lea     rdx, str_local
         mov     r8d, r12d                   ; R12D = number of characters written to 'str_local'
-        mov     r9, OFFSET nbwr
+        lea     r9, nbwr
         mov     QWORD PTR [rsp+32], 0
         call    WriteFile
         test    eax, eax                    ; Non-zero = success; zero = failure
@@ -348,15 +424,8 @@ alarm:
         mWriteFile  dblsp                   ; Write double space
         mov     ebx, 400                    ; EBX = number of alarm cycles (400 = 10 minutes)
 beep_loop:
-        mov     ecx, VK_SHIFT
-        call    GetAsyncKeyState
-        test    ax, 8000h
-        jz      @f
-        mov     ecx, VK_ESCAPE
-        call    GetAsyncKeyState
-        test    ax, 8000h
-        jnz     exit_esc
-@@:
+        mReadExitKey                        ; Check for exit key press.
+
         mov     ecx, 700                    ; dwFreq (Hz)
         mov     edx, 1000                   ; dwDuration (ms)
         call    Beep
