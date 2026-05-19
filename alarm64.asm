@@ -8,7 +8,7 @@
 ; Licensed under the Apache License, Version 2.0
 ;============================================================================
 
-INCLUDELIB kernel32.lib                     ; Link the Windows kernel library for system functions
+INCLUDELIB kernel32.lib                     ; Link the Windows kernel library
 INCLUDELIB user32.lib                       ; Link the Windows user interface library
 
 ;----------------------------------------------------------------------------
@@ -16,15 +16,22 @@ INCLUDELIB user32.lib                       ; Link the Windows user interface li
 ; x64 args in: RCX, RDX, R8, R9, stack
 ;----------------------------------------------------------------------------
 
+; --- Process & System ---
 ExitProcess         PROTO uExitCode:DWORD
-GetStdHandle        PROTO nStdHandle:DWORD
-GetLocalTime        PROTO lpSystemTime:PTR SYSTEMTIME
-Beep                PROTO dwFreq:DWORD, dwDuration:DWORD
 Sleep               PROTO dwMilliseconds:DWORD
+
+; --- Time & Date ---
+GetLocalTime        PROTO lpSystemTime:PTR SYSTEMTIME
+
+; --- Console & File I/O ---
+GetStdHandle        PROTO nStdHandle:DWORD
 ReadFile            PROTO hFile:QWORD, lpBuffer:PTR, nNumberOfBytesToRead:DWORD, lpNumberOfBytesRead:PTR, lpOverlapped:PTR
 WriteFile           PROTO hFile:QWORD, lpBuffer:PTR, nNumberOfBytesToWrite:DWORD, lpNumberOfBytesWritten:PTR, lpOverlapped:PTR
 ReadConsoleInputW   PROTO hConsoleInput:QWORD, lpBuffer:PTR INPUT_RECORD, nLength:DWORD, lpNumberOfEventsRead:PTR
 GetNumberOfConsoleInputEvents PROTO hConsoleInput:QWORD, lpcNumberOfEvents:PTR
+
+; --- Device ---
+Beep                PROTO dwFreq:DWORD, dwDuration:DWORD
 
 ;----------------------------------------------------------------------------
 ; Constants
@@ -57,7 +64,7 @@ ENDM
 mReadExitKey MACRO
     LOCAL   event_loop, continue
 event_loop:
-    ; Was a an input event detected?
+    ; Was an input event detected?
     mov     rcx, [stdin]                    ; Handle to console input buffer
     lea     rdx, eventsRead                 ; Pointer to a variable that receives the number of input records read
     call    GetNumberOfConsoleInputEvents
