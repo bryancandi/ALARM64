@@ -15,7 +15,7 @@ ALARM64 v1.0
 
 Enter alarm target time (HH:MM): 07:00
 
-Press Escape key to terminate alarm.
+Hold Shift + Escape to cancel the alarm.
 
 Alarm set time: 07:00
 Current time:   20:16
