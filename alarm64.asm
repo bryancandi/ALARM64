@@ -25,7 +25,8 @@ Sleep               PROTO dwMilliseconds:DWORD
 STD_INPUT_HANDLE    EQU -10
 STD_OUTPUT_HANDLE   EQU -11
 MaxSize             EQU 64
-VK_ESCAPE           EQU 1Bh                 ; Escape key code for GetAsyncKeyState
+VK_ESCAPE           EQU 1Bh                 ; Escape key code
+VK_SHIFT            EQU 10h                 ; Shift key code
 
 ; WriteFile macro for static buffers.
 mWriteFile  MACRO   buffer:REQ
@@ -57,13 +58,13 @@ header      BYTE    0Dh, 0Ah, "ALARM64 v1.0", 0Dh, 0Ah
 separator   BYTE    "----------------------------------------", 0Dh, 0Ah
 prompt      BYTE    0Dh, 0Ah, "Enter alarm target time (HH:MM): "
 error       BYTE    0Dh, 0Ah, "Invalid time format. Use 24h HH:MM.", 0Dh, 0Ah
-quit        BYTE    0Dh, 0Ah, "Press Escape key to terminate alarm.", 0Dh, 0Ah
+quit        BYTE    0Dh, 0Ah, "Hold Shift + Escape to cancel the alarm.", 0Dh, 0Ah
 lbl_alarm   BYTE    0Dh, 0Ah, "Alarm set time: "
 lbl_local   BYTE    0Dh, "Current time:   "
 wake        BYTE    0Dh, "Alarm!"
 blank       BYTE    0Dh, "      "
 done        BYTE    0Dh, "Alarm completed.", 0Dh, 0Ah
-esc_done    BYTE    0Dh, 0Ah, "Alarm terminated by user.", 0Dh, 0Ah  
+esc_done    BYTE    0Dh, 0Ah, "Alarm cancelled by user.", 0Dh, 0Ah
 cr          BYTE    0Dh
 crlf        BYTE    0Dh, 0Ah
 dblsp       BYTE    0Dh, 0Ah, 0Ah
@@ -239,7 +240,7 @@ str_to_int_loop:
 
         ; Alarm is set.
         ; Sound a test tone to ensure the alarm cannot fail silently due to a Beep system call failure.
-        ; Write ESC to terminate message and alarm set time.
+        ; Write cancel alarm instruction and alarm set time.
         mov     ecx, 700                    ; dwFreq (Hz)
         mov     edx, 250                    ; dwDuration (ms)
         call    Beep
@@ -263,19 +264,22 @@ str_to_int_loop:
         jz      write_failure
 
         ; Compare loop has four functions:
-        ; 1. Check if ESCAPE key has been pressed; exit if yes.
+        ; 1. Check for exit key combo (Shift + Escape held).
+        ;    If Shift key is down, check if Escape key is down as well; if both are down, exit.
         ; 2. Build a string from SysTime stuct for printing (wHour:wMinute).
         ;    Count characters while building string in non-volatile register R12D to survive calls.
         ; 3. Combine wMinute and wHour into a 4 digit integer time format (HHMM).
         ; 4. Compare alarm set time to the system local time, jump to alarm when they match.
 compare_loop:
-        mov     ecx, VK_ESCAPE              ; Arg 1 = virtual key code to listen for (ESCAPE)
-        call    GetAsyncKeyState            ; Check if ESC key has been pressed since the last loop
-        ; Test AX register LSB and MSB, thish way we catch both possible scenarios (8000h OR 1)
-        ; LSB = key pressed since last query, MSB = key currently down
-        test    ax, 8001h                   ; Text AX. Non-zero if either LSB or MSB is set.
+        mov     ecx, VK_SHIFT               ; Arg 1 = first virtual key code to listen for (SHIFT)
+        call    GetAsyncKeyState            ; Check if key is currently down
+        test    ax, 8000h                   ; Text AX; non-zero if MSB is set
+        jz      @f                          ; If Shift is not held, skip ESC check
+        mov     ecx, VK_ESCAPE              ; Arg 1 = second virtual key code to listen for (ESCAPE)
+        call    GetAsyncKeyState
+        test    ax, 8000h
         jnz     exit_esc
-    
+@@:
         mov     rdi, OFFSET str_local       ; RDI = address of buffer to build local time string
         xor     r12d, r12d                  ; R12D = counter for characters written to local time string
         mov     rcx, OFFSET SysTime         ; Arg 1 = address of the time structure
@@ -344,11 +348,15 @@ alarm:
         mWriteFile  dblsp                   ; Write double space
         mov     ebx, 400                    ; EBX = number of alarm cycles (400 = 10 minutes)
 beep_loop:
+        mov     ecx, VK_SHIFT
+        call    GetAsyncKeyState
+        test    ax, 8000h
+        jz      @f
         mov     ecx, VK_ESCAPE
-        call    GetAsyncKeyState            ; Check if ESC key has been pressed since the last loop
-        test    ax, 8001h                   ; LSB = key pressed since last query, MSB = key currently down
+        call    GetAsyncKeyState
+        test    ax, 8000h
         jnz     exit_esc
-
+@@:
         mov     ecx, 700                    ; dwFreq (Hz)
         mov     edx, 1000                   ; dwDuration (ms)
         call    Beep
