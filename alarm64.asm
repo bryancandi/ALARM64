@@ -35,7 +35,7 @@ STD_OUTPUT_HANDLE   EQU -11
 MaxSize             EQU 64
 KEY_EVENT           EQU 0001h               ; KEY_EVENT_RECORD structure
 KEY_DOWN            EQU 1h                  ; KEY_DOWN TRUE
-VK_ESCAPE           EQU 1Bh                 ; Escape virtual key code
+VK_ESCAPE           EQU 1Bh                 ; ESC virtual key code
 
 ;----------------------------------------------------------------------------
 ; Macros
@@ -79,9 +79,9 @@ event_loop:
     jne     event_loop                      ; No, go back and check again
     cmp     irInBuf.KeyEvent.bKeyDown, KEY_DOWN ; Was the event a KEY_DOWN?
     jne     event_loop                      ; No, go back and check again
-    cmp     irInBuf.KeyEvent.wVirtualKeyCode, VK_ESCAPE ; Escape key pressed?
+    cmp     irInBuf.KeyEvent.wVirtualKeyCode, VK_ESCAPE ; ESC key pressed?
     je      exit_esc                        ; Yes, exit
-    jmp     event_loop                      ; No, key was not Escape, go back and check again
+    jmp     event_loop                      ; No, key was not ESC, go back and check again
 continue:
 ENDM
 
@@ -136,13 +136,13 @@ header      BYTE    0Dh, 0Ah, "ALARM64 v1.1", 0Dh, 0Ah
 separator   BYTE    "----------------------------------------", 0Dh, 0Ah
 prompt      BYTE    0Dh, 0Ah, "Enter alarm target time (HH:MM): "
 error       BYTE    0Dh, 0Ah, "Invalid time format. Use 24h HH:MM.", 0Dh, 0Ah
-quit        BYTE    0Dh, 0Ah, "Press Escape key to cancel the alarm.", 0Dh, 0Ah
+quit        BYTE    0Dh, 0Ah, "Press ESC to cancel the alarm.", 0Dh, 0Ah
 lbl_alarm   BYTE    0Dh, 0Ah, "Alarm set time: "
 lbl_local   BYTE    0Dh, "Current time:   "
 wake        BYTE    0Dh, "Alarm!"
 blank       BYTE    0Dh, "      "
 done        BYTE    0Dh, "Alarm completed.", 0Dh, 0Ah
-esc_done    BYTE    0Dh, 0Ah, "Alarm cancelled by user.", 0Dh, 0Ah
+esc_done    BYTE    0Dh, 0Ah, 0Ah, "Alarm cancelled by user.", 0Dh, 0Ah
 cr          BYTE    0Dh
 crlf        BYTE    0Dh, 0Ah
 dblsp       BYTE    0Dh, 0Ah, 0Ah
@@ -347,8 +347,7 @@ str_to_int_loop:
         jz      write_failure
 
         ; Compare loop has four functions:
-        ; 1. Check for exit key combo (Shift + Escape held).
-        ;    If Shift key is down, check if Escape key is down as well; if both are down, exit.
+        ; 1. Check if exit key has been pressed.
         ; 2. Build a string from SysTime stuct for printing (wHour:wMinute).
         ;    Count characters while building string in non-volatile register R12D to survive calls.
         ; 3. Combine wMinute and wHour into a 4 digit integer time format (HHMM).
