@@ -175,6 +175,11 @@ alarm_time  DWORD   ?
 
         .CODE
 start   PROC    USES rbx rsi rdi r12
+        ; Program entry procedure uses 4 non-volatile registers. The USES directive pushes them on the stack.
+        ; Since 4 pushes x 8 bytes = 32 bytes (a multiple of 16), stack alignment remains unchanged.
+        ; We will reserve 32 bytes for "shadow space" and an additional 8 bytes for alignment.
+        ; Process entry begins with RSP misaligned by 8 bytes per the Windows x64 ABI because
+        ; CALL pushes an 8-byte return address onto the stack.
         sub     rsp, 40                     ; Reserve shadow space on stack (32 bytes + 8 to align)
 
         mov     rcx, STD_INPUT_HANDLE       ; nStdHandle
