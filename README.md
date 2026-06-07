@@ -27,8 +27,10 @@ Current time:   20:16
 - **Alarm Logic** - Sounds the alarm on the next occurrence of the entered target time whether it is the same day or the next day.
 
 ## Building from Source
-To assemble and link the project, use the Microsoft Macro Assembler (included with Visual Studio Build Tools):
+The **Microsoft Visual Studio Build Tools** package is required to assemble and link this project. Ensure the following components are installed, then run the included build batch file (`build.bat`).
 
-```powershell
-ml64.exe alarm64.asm /link /SUBSYSTEM:console /ENTRY:start /OUT:ALARM64.exe
-```
+- Microsoft Macro Assembler (x64) - `ml64.exe`
+- Microsoft Windows Resource Compiler - `rc.exe`
+- Microsoft Incremental Linker - `link.exe`
+
+![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/bryancandi/ALARM64/total?style=flat)
