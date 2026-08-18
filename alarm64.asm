@@ -99,7 +99,7 @@ ENDM
 ; Key Event Record and Input Record structure populated by ReadConsoleInput.
 KEY_EVENT_RECORD STRUCT
     bKeyDown          DWORD ?
-    wRepeateCount     WORD  ?
+    wRepeatCount      WORD  ?
     wVirtualKeyCode   WORD  ?
     wVirtualScanCode  WORD  ?
 
@@ -133,16 +133,29 @@ SYSTEMTIME STRUCT
 SYSTEMTIME ENDS
 
 ;----------------------------------------------------------------------------
-; Data Segment
+; Data Segments
 ;----------------------------------------------------------------------------
 
-        .DATA
-irInBuf     INPUT_RECORD <>                 ; Instance of INPUT_RECORD with default initialization
-SysTime     SYSTEMTIME <>                   ; Instance of SYSTEMTIME with default initialization
+        .DATA?
+irInBuf     INPUT_RECORD <?>                ; Instance of INPUT_RECORD with default initialization
+SysTime     SYSTEMTIME <?>                  ; Instance of SYSTEMTIME with default initialization
+buffer      BYTE    MaxSize DUP (?)
+fmtbuf      BYTE    MaxSize DUP (?)
+str_local   BYTE    MaxSize DUP (?)
+stdin       QWORD   ?
+stdout      QWORD   ?
+nbrd        DWORD   ?                       ; Number of bytes read
+nbwr        DWORD   ?                       ; Number of bytes written
+eventsRead  DWORD   ?                       ; Number of input events read
+num_wspace  DWORD   ?
+num_digits  DWORD   ?
+alarm_time  DWORD   ?
+
+        .CONST
 header      BYTE    0Dh, 0Ah, "ALARM64 v1.1", 0Dh, 0Ah
 separator   BYTE    "----------------------------------------", 0Dh, 0Ah
 prompt      BYTE    0Dh, 0Ah, "Enter alarm target time (HH:MM): "
-error       BYTE    0Dh, 0Ah, "Invalid time format. Use 24h HH:MM.", 0Dh, 0Ah
+error       BYTE    0Dh, 0Ah, "Invalid time format. Use 24h 'HH:MM'.", 0Dh, 0Ah
 quit        BYTE    0Dh, 0Ah, "Press ESC to cancel the alarm.", 0Dh, 0Ah
 lbl_alarm   BYTE    0Dh, 0Ah, "Alarm set time: "
 lbl_local   BYTE    0Dh, "Current time:   "
@@ -157,17 +170,6 @@ err_handle  BYTE    0Dh, 0Ah, "ALARM64: GetStdHandle system call failure.", 0Dh,
 err_read    BYTE    0Dh, 0Ah, "ALARM64: ReadFile system call failure.", 0Dh, 0Ah
 err_write   BYTE    0Dh, 0Ah, "ALARM64: WriteFile system call failure.", 0Dh, 0Ah
 err_beep    BYTE    0Dh, 0Ah, "ALARM64: Beep system call failure.", 0Dh, 0Ah
-buffer      BYTE    MaxSize DUP (?)
-fmtbuf      BYTE    MaxSize DUP (?)
-str_local   BYTE    MaxSize DUP (?)
-stdin       QWORD   ?
-stdout      QWORD   ?
-nbrd        DWORD   ?                       ; Number of bytes read
-nbwr        DWORD   ?                       ; Number of bytes written
-eventsRead  DWORD   ?                       ; Number of input events read
-num_wspace  DWORD   ?
-num_digits  DWORD   ?
-alarm_time  DWORD   ?
 
 ;----------------------------------------------------------------------------
 ; Code Segment
@@ -276,7 +278,7 @@ minute_first_digit:
         inc     rdi
         inc     r9d
 
-        ; M positon 2:
+        ; M position 2:
         ; Acceptable range is 0-9.
         mov     al, [rsi]
         cmp     al, '0'
@@ -360,7 +362,7 @@ str_to_int_loop:
 
         ; Compare loop has four functions:
         ; 1. Check if exit key has been pressed.
-        ; 2. Build a string from SysTime stuct for printing (wHour:wMinute).
+        ; 2. Build a string from SysTime struct for printing (wHour:wMinute).
         ;    Count characters while building string in non-volatile register R12D to survive calls.
         ; 3. Combine wMinute and wHour into a 4 digit integer time format (HHMM).
         ; 4. Compare alarm set time to the system local time, jump to alarm when they match.
