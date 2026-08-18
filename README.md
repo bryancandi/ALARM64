@@ -10,7 +10,7 @@ When executed, this interactive command-line based alarm clock will prompt the u
 ```text
 .\ALARM64.exe
 
-ALARM64 v1.1
+ALARM64 v1.0
 ----------------------------------------
 
 Enter alarm target time (HH:MM): 07:00

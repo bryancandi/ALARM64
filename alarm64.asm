@@ -152,7 +152,7 @@ num_digits  DWORD   ?
 alarm_time  DWORD   ?
 
         .CONST
-header      BYTE    0Dh, 0Ah, "ALARM64 v1.1", 0Dh, 0Ah
+header      BYTE    0Dh, 0Ah, "ALARM64 v1.0", 0Dh, 0Ah
 separator   BYTE    "----------------------------------------", 0Dh, 0Ah
 prompt      BYTE    0Dh, 0Ah, "Enter alarm target time (HH:MM): "
 error       BYTE    0Dh, 0Ah, "Invalid time format. Use 24h 'HH:MM'.", 0Dh, 0Ah
