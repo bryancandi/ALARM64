@@ -1,5 +1,5 @@
 ;============================================================================
-; ALARM64.ASM - x64 Interactive Command-line Alarm Clock Utility
+; ALARM64.ASM - x86-64 Interactive Command-line Alarm Clock Utility
 ;
 ; Assemble and link with:
 ; ml64.exe alarm64.asm /link /SUBSYSTEM:console /ENTRY:start /OUT:ALARM64.exe
@@ -25,6 +25,7 @@ GetLocalTime        PROTO lpSystemTime:PTR SYSTEMTIME
 
 ; --- Console & File I/O ---
 GetStdHandle        PROTO nStdHandle:DWORD
+GetFileType         PROTO hFile:QWORD
 ReadFile            PROTO hFile:QWORD, lpBuffer:PTR, nNumberOfBytesToRead:DWORD, lpNumberOfBytesRead:PTR, lpOverlapped:PTR
 WriteFile           PROTO hFile:QWORD, lpBuffer:PTR, nNumberOfBytesToWrite:DWORD, lpNumberOfBytesWritten:PTR, lpOverlapped:PTR
 ReadConsoleInputW   PROTO hConsoleInput:QWORD, lpBuffer:PTR INPUT_RECORD, nLength:DWORD, lpNumberOfEventsRead:PTR
@@ -39,10 +40,13 @@ Beep                PROTO dwFreq:DWORD, dwDuration:DWORD
 
 STD_INPUT_HANDLE    EQU -10
 STD_OUTPUT_HANDLE   EQU -11
-MaxSize             EQU 64
+FILE_TYPE_DISK      EQU 0001h               ; The specified file is a disk file
+FILE_TYPE_PIPE      EQU 0003h               ; The specified file is a socket, a named pipe, or an anonymous pipe
+FILE_TYPE_UNKNOWN   EQU 0000h               ; Either the type of the specified file is unknown, or the function failed
 KEY_EVENT           EQU 0001h               ; KEY_EVENT_RECORD structure
 KEY_DOWN            EQU 1h                  ; KEY_DOWN TRUE
 VK_ESCAPE           EQU 1Bh                 ; ESC virtual key code
+MaxSize             EQU 64
 
 ;----------------------------------------------------------------------------
 ; Macros
@@ -163,10 +167,11 @@ wake        BYTE    0Dh, "Alarm!"
 blank       BYTE    0Dh, "      "
 done        BYTE    0Dh, "Alarm completed.", 0Dh, 0Ah
 esc_done    BYTE    0Dh, 0Ah, 0Ah, "Alarm cancelled by user.", 0Dh, 0Ah
-cr          BYTE    0Dh
-crlf        BYTE    0Dh, 0Ah
-dblsp       BYTE    0Dh, 0Ah, 0Ah
+dbl_space   BYTE    0Dh, 0Ah, 0Ah
 err_handle  BYTE    0Dh, 0Ah, "ALARM64: GetStdHandle system call failure.", 0Dh, 0Ah
+err_type    BYTE    0Dh, 0Ah, "ALARM64: GetFileType system call failure.", 0Dh, 0Ah
+err_disk    BYTE    0Dh, 0Ah, "ALARM64: File input redirection is not supported.", 0Dh, 0Ah
+err_pipe    BYTE    0Dh, 0Ah, "ALARM64: Piped input is not supported.", 0Dh, 0Ah
 err_read    BYTE    0Dh, 0Ah, "ALARM64: ReadFile system call failure.", 0Dh, 0Ah
 err_write   BYTE    0Dh, 0Ah, "ALARM64: WriteFile system call failure.", 0Dh, 0Ah
 err_beep    BYTE    0Dh, 0Ah, "ALARM64: Beep system call failure.", 0Dh, 0Ah
@@ -199,6 +204,16 @@ start   PROC    USES rbx rsi rdi r12
         ; Write header and separator.
         mWriteFile  header
         mWriteFile  separator
+
+        ; Check for redirected input before continuing.
+        mov     rcx, [stdin]                ; hFile = stdin
+        call    GetFileType                 ; Retrieve the file type of the specified file
+        cmp     eax, FILE_TYPE_UNKNOWN
+        je      get_input_type_failure
+        cmp     eax, FILE_TYPE_DISK
+        je      input_type_disk_failure
+        cmp     eax, FILE_TYPE_PIPE
+        je      input_type_pipe_failure
 
         ; Write prompt and read input.
 time_prompt:
@@ -266,7 +281,7 @@ colon_separator:
         jmp     consume_separator
 
 minute_first_digit:
-        ; M position 1
+        ; M position 1:
         ; Acceptable range is 0-5.
         mov     al, [rsi]
         cmp     al, '0'
@@ -434,7 +449,7 @@ compare_loop:
 
         ; Sound the alarm!
 alarm:
-        mWriteFile  dblsp                   ; Write double space
+        mWriteFile  dbl_space               ; Write double space
         mov     ebx, 400                    ; EBX = number of alarm cycles (400 = 10 minutes)
 beep_loop:
         mReadExitKey                        ; Check for exit key press.
@@ -459,6 +474,15 @@ beep_loop:
 
 get_handle_failure:
         mWriteFile  err_handle
+        jmp     exit
+get_input_type_failure:
+        mWriteFile  err_type
+        jmp     exit
+input_type_disk_failure:
+        mWriteFile  err_disk
+        jmp     exit
+input_type_pipe_failure:
+        mWriteFile  err_pipe
         jmp     exit
 read_failure:
         mWriteFile  err_read
