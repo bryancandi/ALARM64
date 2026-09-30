@@ -19,6 +19,7 @@ INCLUDELIB user32.lib                       ; Link the Windows user interface li
 ; --- Process & System ---
 ExitProcess         PROTO uExitCode:DWORD
 Sleep               PROTO dwMilliseconds:DWORD
+SetThreadExecutionState PROTO esFlags:DWORD
 
 ; --- Time & Date ---
 GetLocalTime        PROTO lpSystemTime:PTR SYSTEMTIME
@@ -33,6 +34,7 @@ GetNumberOfConsoleInputEvents PROTO hConsoleInput:QWORD, lpcNumberOfEvents:PTR
 
 ; --- Device ---
 Beep                PROTO dwFreq:DWORD, dwDuration:DWORD
+mouse_event         PROTO dwFlags:DWORD, dwDx:DWORD, dwDy:DWORD, dwData:DWORD, dwExtraInfo:QWORD
 
 ;----------------------------------------------------------------------------
 ; Constants
@@ -46,6 +48,10 @@ FILE_TYPE_UNKNOWN   EQU 0000h               ; Either the type of the specified f
 KEY_EVENT           EQU 0001h               ; KEY_EVENT_RECORD structure
 KEY_DOWN            EQU 1h                  ; KEY_DOWN TRUE
 VK_ESCAPE           EQU 1Bh                 ; ESC virtual key code
+MOUSEEVENTF_MOVE    EQU 0001h               ; Synthesize mouse movement
+ES_CONTINUOUS       EQU 80000000h           ; SetThreadExecutionState function execution requirement parameters
+ES_DISPLAY_REQUIRED EQU 00000002h
+ES_SYSTEM_REQUIRED  EQU 00000001h
 MaxSize             EQU 64
 
 ;----------------------------------------------------------------------------
@@ -156,7 +162,7 @@ num_digits  DWORD   ?
 alarm_time  DWORD   ?
 
         .CONST
-header      BYTE    0Dh, 0Ah, "ALARM64 v1.0", 0Dh, 0Ah
+header      BYTE    0Dh, 0Ah, "ALARM64 v1.1", 0Dh, 0Ah
 separator   BYTE    "----------------------------------------", 0Dh, 0Ah
 prompt      BYTE    0Dh, 0Ah, "Enter alarm target time (HH:MM): "
 error       BYTE    0Dh, 0Ah, "Invalid time format. Use 24h 'HH:MM'.", 0Dh, 0Ah
@@ -382,7 +388,7 @@ str_to_int_loop:
         ; 3. Combine wMinute and wHour into a 4 digit integer time format (HHMM).
         ; 4. Compare alarm set time to the system local time, jump to alarm when they match.
 compare_loop:
-        mReadExitKey                        ; Check for exit key press.
+        mReadExitKey                        ; Check for exit key press
 
         lea     rdi, str_local              ; RDI = pointer to buffer to build local time string
         xor     r12d, r12d                  ; R12D = counter for characters written to local time string
@@ -448,11 +454,26 @@ compare_loop:
         jmp     compare_loop
 
         ; Sound the alarm!
+        ; 1. Wake display with synthesized mouse movement.
+        ; 2. Keep the display awake for the duration of the alarm.
+        ; 3. Enter beep_loop.
 alarm:
+        mov     ecx, MOUSEEVENTF_MOVE       ; dwFlags (movement occurred)
+        xor     edx, edx                    ; dx
+        xor     r8d, r8d                    ; dy
+        xor     r9d, r9d                    ; dwData
+        mov     QWORD PTR [rsp+32], 0       ; dwExtraInfo
+        call    mouse_event
+
+        mov     ecx, ES_CONTINUOUS          ; Flags persist until a later ES_CONTINUOUS call replaces them or the thread exits
+        or      ecx, ES_DISPLAY_REQUIRED    ; Reset display idle timer
+        or      ecx, ES_SYSTEM_REQUIRED     ; Reset system idle timer
+        call    SetThreadExecutionState
+
         mWriteFile  dbl_space               ; Write double space
         mov     ebx, 400                    ; EBX = number of alarm cycles (400 = 10 minutes)
 beep_loop:
-        mReadExitKey                        ; Check for exit key press.
+        mReadExitKey                        ; Check for exit key press
 
         mov     ecx, 700                    ; dwFreq (Hz)
         mov     edx, 1000                   ; dwDuration (ms)
@@ -500,6 +521,9 @@ exit_esc:
 exit_done:
         mWriteFile  done                    ; Write alarm completed message
 exit:
+        mov     ecx, ES_CONTINUOUS          ; Release display/system awake flags set by alarm
+        call    SetThreadExecutionState
+
         xor     ecx, ecx                    ; uExitCode
         call    ExitProcess
 start   ENDP
